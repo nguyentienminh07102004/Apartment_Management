@@ -1,0 +1,6 @@
+POST http://localhost:8080/users/verify-email
+
+{
+    "email": "nguyentienminh07102004@gmail.com",
+    "password": "123"
+}

@@ -22,7 +22,7 @@ public class RoleEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id")
     private String id;
-    @Column(name = "name")
+    @Column(name = "name", unique = true, nullable = false)
     private String name;
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;

@@ -31,9 +31,10 @@ public class JwtGenerator {
     public JwtEntity jwtGenerator(UserEntity user) {
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
         String jwtId = UUID.randomUUID().toString();
+        Date expiredDate = Date.from(Instant.now().plus(1, ChronoUnit.DAYS));
         JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
                 .subject(user.getEmail())
-                .expirationTime(Date.from(Instant.now().plus(1, ChronoUnit.DAYS)))
+                .expirationTime(expiredDate)
                 .jwtID(jwtId)
                 .issueTime(new Date(System.currentTimeMillis()))
                 .issuer(ConstantConfig.NAME)
@@ -42,7 +43,7 @@ public class JwtGenerator {
         JWSObject jwsObject = new JWSObject(header, payload);
         try {
             jwsObject.sign(new MACSigner(signingKey.getBytes()));
-            return new JwtEntity(jwtId, jwsObject.serialize(), user);
+            return new JwtEntity(jwtId, jwsObject.serialize(), expiredDate, user);
         } catch (JOSEException e) {
             throw new DataInvalidException(ExceptionVariable.SERVER_ERROR);
         }

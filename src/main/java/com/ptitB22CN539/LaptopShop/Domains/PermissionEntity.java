@@ -1,5 +1,6 @@
 package com.ptitB22CN539.LaptopShop.Domains;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -27,5 +28,6 @@ public class PermissionEntity {
     private String description;
 
     @ManyToMany(mappedBy = "permissions")
+    @JsonBackReference
     private List<UserEntity> users;
 }

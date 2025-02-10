@@ -18,4 +18,5 @@ public class UserLogin {
     private String email;
     @Size(min = 8, message = "PASSWORD_LENGTH_NOT_CORRECT")
     private String password;
+    private Boolean isSocial;
 }

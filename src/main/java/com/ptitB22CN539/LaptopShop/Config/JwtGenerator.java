@@ -9,12 +9,11 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import com.ptitB22CN539.LaptopShop.Domains.JwtEntity;
 import com.ptitB22CN539.LaptopShop.Domains.UserEntity;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.DataInvalidException;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.ExceptionVariable;
+import com.ptitB22CN539.LaptopShop.Redis.Entity.JwtRedisEntity;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.text.ParseException;
@@ -27,14 +26,15 @@ import java.util.UUID;
 public class JwtGenerator {
     @Value(value = "${signerKey}")
     private String signingKey;
+    @Value(value = "${accessTokenDuration}")
+    private Long accessTokenDuration;
 
-    public JwtEntity jwtGenerator(UserEntity user) {
+    public JwtRedisEntity jwtGenerator(UserEntity user) {
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
         String jwtId = UUID.randomUUID().toString();
-        Date expiredDate = Date.from(Instant.now().plus(1, ChronoUnit.DAYS));
         JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
                 .subject(user.getEmail())
-                .expirationTime(expiredDate)
+                .expirationTime(Date.from(Instant.now().plus(accessTokenDuration, ChronoUnit.SECONDS)))
                 .jwtID(jwtId)
                 .issueTime(new Date(System.currentTimeMillis()))
                 .issuer(ConstantConfig.NAME)
@@ -43,20 +43,21 @@ public class JwtGenerator {
         JWSObject jwsObject = new JWSObject(header, payload);
         try {
             jwsObject.sign(new MACSigner(signingKey.getBytes()));
-            return new JwtEntity(jwtId, jwsObject.serialize(), expiredDate, user);
+            return new JwtRedisEntity(jwtId, user.getEmail(), jwsObject.serialize(), accessTokenDuration);
         } catch (JOSEException e) {
             throw new DataInvalidException(ExceptionVariable.SERVER_ERROR);
         }
     }
 
     public boolean verify(String token) throws ParseException, JOSEException {
+        SignedJWT signedJWT = this.getSignedJWT(token);
+        Date expired = signedJWT.getJWTClaimsSet().getExpirationTime();
+        return expired.after(Date.from(Instant.now()));
+    }
+
+    public SignedJWT getSignedJWT(String token) throws ParseException, JOSEException {
         SignedJWT signedJWT = SignedJWT.parse(token);
         signedJWT.verify(new MACVerifier(signingKey.getBytes()));
-        Date expired = signedJWT.getJWTClaimsSet().getExpirationTime();
-        if (expired.after(Date.from(Instant.now()))) {
-            throw new DataInvalidException(ExceptionVariable.TOKEN_INVALID);
-        }
-        return signedJWT.getJWTClaimsSet().getSubject()
-                .equals(SecurityContextHolder.getContext().getAuthentication().getName());
+        return signedJWT;
     }
 }

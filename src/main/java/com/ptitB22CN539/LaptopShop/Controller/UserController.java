@@ -3,10 +3,11 @@ package com.ptitB22CN539.LaptopShop.Controller;
 import com.ptitB22CN539.LaptopShop.DTO.APIResponse;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserLogin;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserRegister;
-import com.ptitB22CN539.LaptopShop.Domains.JwtEntity;
 import com.ptitB22CN539.LaptopShop.Domains.UserEntity;
+import com.ptitB22CN539.LaptopShop.Redis.Entity.JwtRedisEntity;
 import com.ptitB22CN539.LaptopShop.Service.User.IUserService;
 import com.ptitB22CN539.LaptopShop.Utils.GetInfoSocialLogin;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.repository.query.Param;
@@ -28,7 +29,7 @@ public class UserController {
 
     @PostMapping(value = "/login")
     public ResponseEntity<APIResponse> login(@Valid @RequestBody UserLogin userLogin) {
-        JwtEntity jwtEntity = userService.login(userLogin);
+        JwtRedisEntity jwtEntity = userService.login(userLogin);
         APIResponse response = APIResponse.builder()
                 .code(HttpStatus.OK.value())
                 .message("Success")
@@ -50,11 +51,21 @@ public class UserController {
 
     @PostMapping(value = "/login/{social}")
     public ResponseEntity<APIResponse> loginGoogle(@Param(value = "code") @RequestParam String code, @Param(value = "social") @PathVariable String social) {
-        JwtEntity jwt = userService.loginSocial(getInfoSocialLogin.getInfoSocialLogin(code).get(social));
+        JwtRedisEntity jwt = userService.loginSocial(getInfoSocialLogin.getInfoSocialLogin(code).get(social));
         APIResponse response = APIResponse.builder()
                 .message("Success")
                 .code(HttpStatus.OK.value())
                 .data(jwt)
+                .build();
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
+
+    @PostMapping(value = "/logout")
+    public ResponseEntity<APIResponse> logout(HttpServletRequest request) {
+        userService.logout(request);
+        APIResponse response = APIResponse.builder()
+                .message("Success")
+                .code(HttpStatus.OK.value())
                 .build();
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }

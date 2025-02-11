@@ -12,7 +12,6 @@ public interface UserMapper {
             @Mapping(target = "permissions", ignore = true),
             @Mapping(target = "role", ignore = true),
             @Mapping(target = "id", ignore = true),
-            @Mapping(target = "jwts", ignore = true),
             @Mapping(target = "status", ignore = true)
     })
     UserEntity registerToEntity(UserRegister userRegister);

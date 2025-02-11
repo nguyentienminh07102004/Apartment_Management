@@ -14,15 +14,12 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Cascade;
-import org.hibernate.annotations.CascadeType;
 
 import java.util.List;
 
@@ -64,9 +61,4 @@ public class UserEntity {
             inverseJoinColumns = @JoinColumn(name = "permission_id"))
     @JsonManagedReference
     private List<PermissionEntity> permissions;
-
-    @OneToMany(mappedBy = "user", orphanRemoval = true)
-    @Cascade(value = {CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REMOVE})
-    @JsonManagedReference
-    private List<JwtEntity> jwts;
 }

@@ -1,19 +1,21 @@
 package com.ptitB22CN539.LaptopShop.Service.User;
 
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jwt.JWTClaimsSet;
 import com.ptitB22CN539.LaptopShop.Config.ConstantConfig;
 import com.ptitB22CN539.LaptopShop.Config.JwtGenerator;
 import com.ptitB22CN539.LaptopShop.Config.UserStatus;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserLogin;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserRegister;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserSocialLogin;
-import com.ptitB22CN539.LaptopShop.Domains.JwtEntity;
 import com.ptitB22CN539.LaptopShop.Domains.PermissionEntity;
 import com.ptitB22CN539.LaptopShop.Domains.RoleEntity;
 import com.ptitB22CN539.LaptopShop.Domains.UserEntity;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.DataInvalidException;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.ExceptionVariable;
 import com.ptitB22CN539.LaptopShop.Mapper.User.UserMapper;
-import com.ptitB22CN539.LaptopShop.Repository.JwtRepository;
+import com.ptitB22CN539.LaptopShop.Redis.Entity.JwtRedisEntity;
+import com.ptitB22CN539.LaptopShop.Redis.Repository.IJwtRedisRepository;
 import com.ptitB22CN539.LaptopShop.Repository.PermissionRepository;
 import com.ptitB22CN539.LaptopShop.Repository.RoleRepository;
 import com.ptitB22CN539.LaptopShop.Repository.UserRepository;
@@ -23,7 +25,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
@@ -35,9 +36,9 @@ import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -50,28 +51,27 @@ public class UserServiceImpl implements IUserService {
     private final PermissionRepository permissionRepository;
     private final JwtGenerator jwtGenerator;
     private final PasswordEncoder passwordEncoder;
-    private final JwtRepository jwtRepository;
     private final UserMapper userMapper;
+    private final IJwtRedisRepository jwtRedisRepository;
+
 
     @Value(value = "${maxLoginDevice}")
     private Integer maxLoginDevice;
 
     @Override
     @Transactional
-    public JwtEntity login(UserLogin userLogin) {
+    public JwtRedisEntity login(UserLogin userLogin) {
         UserEntity user = userRepository.findByEmail(userLogin.getEmail())
                 .orElseThrow(() -> new DataInvalidException(ExceptionVariable.EMAIL_NOT_FOUND));
         if ((userLogin.getIsSocial() == null || !userLogin.getIsSocial()) && !passwordEncoder.matches(userLogin.getPassword(), user.getPassword())) {
             throw new DataInvalidException(ExceptionVariable.EMAIL_PASSWORD_NOT_CORRECT);
         }
-        List<JwtEntity> jwtEntities = user.getJwts();
+        List<JwtRedisEntity> jwtEntities = jwtRedisRepository.getJwt(user.getEmail());
         if (jwtEntities.size() >= maxLoginDevice) {
             throw new DataInvalidException(ExceptionVariable.ACCOUNT_LOGIN_MAX_DEVICE);
         }
-        JwtEntity jwt = jwtGenerator.jwtGenerator(user);
-        jwtRepository.save(jwt);
-        jwtEntities.add(jwt);
-        user.setJwts(jwtEntities);
+        JwtRedisEntity jwt = jwtGenerator.jwtGenerator(user);
+        jwtRedisRepository.setJwt(jwt);
         userRepository.save(user);
         return jwt;
     }
@@ -112,17 +112,19 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     public void logout(HttpServletRequest request) {
-        String token = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (token == null || !token.startsWith(ConstantConfig.AUTHORIZATION_PREFIX)) {
-            throw new DataInvalidException(ExceptionVariable.TOKEN_INVALID);
+        try {
+            String token = request.getHeader(HttpHeaders.AUTHORIZATION);
+            JWTClaimsSet jwtClaimsSet = jwtGenerator.getSignedJWT(token.substring(7)).getJWTClaimsSet();
+            jwtRedisRepository.deleteJwt(jwtClaimsSet.getSubject(), jwtClaimsSet.getJWTID());
+        } catch (ParseException | JOSEException exception) {
+            System.out.println(exception.getMessage());
         }
-        jwtRepository.deleteByToken(token.substring(ConstantConfig.AUTHORIZATION_PREFIX.length()));
     }
 
     @Override
     @Transactional
     @SuppressWarnings(value = "rawtypes")
-    public JwtEntity loginSocial(UserSocialLogin userSocialLogin) {
+    public JwtRedisEntity loginSocial(UserSocialLogin userSocialLogin) {
         MultiValueMap<String, String> properties = new LinkedMultiValueMap<>();
         if (!userSocialLogin.getName().equals("discord")) {
             properties.add(OAuth2ParameterNames.CLIENT_ID, userSocialLogin.getClientId());
@@ -183,14 +185,9 @@ public class UserServiceImpl implements IUserService {
                 .role(roleRepository.findByName(ConstantConfig.USER_ROLE))
                 .permissions(permissionRepository.findAllByNameIn(ConstantConfig.PERMISSION_DEFAULT_USER))
                 .build();
-        JwtEntity jwt = jwtGenerator.jwtGenerator(user);
-        user.setJwts(List.of(jwt));
+        JwtRedisEntity jwt = jwtGenerator.jwtGenerator(user);
+        jwtRedisRepository.setJwt(jwt);
         userRepository.save(user);
         return jwt;
-    }
-
-    @Scheduled(cron = "0 0 0 1 * *")
-    public void deleteJwtExp() {
-        jwtRepository.deleteAllByExpiredDateBefore(new Date(System.currentTimeMillis()));
     }
 }

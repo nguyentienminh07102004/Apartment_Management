@@ -17,6 +17,12 @@ public enum ExceptionVariable {
     PASSWORD_LENGTH_NOT_CORRECT(400, "Password length is not correct", HttpStatus.BAD_REQUEST),
     PERMISSION_NOT_FOUND(400, "Permission is not exists", HttpStatus.BAD_REQUEST),
     ACCOUNT_LOGIN_MAX_DEVICE(400, "Account login max device", HttpStatus.BAD_REQUEST),
+    UNAUTHORIZED(401, "Unauthorized", HttpStatus.UNAUTHORIZED),
+    APARTMENT_NOT_FOUND(400, "Apartment is not exists", HttpStatus.BAD_REQUEST),
+    USER_NOT_FOUND(400, "User Id is not exists", HttpStatus.BAD_REQUEST),
+    USER_LOCKED(400, "User locked", HttpStatus.BAD_REQUEST),
+    APARTMENT_ALREADY_HAS_OWNER(400, "Apartment already has an owner", HttpStatus.BAD_REQUEST),
+    WATER_FEE_NOT_FOUND(400, "Water fee is not exists", HttpStatus.BAD_REQUEST),
     ;
     private final Integer code;
     private final String message;

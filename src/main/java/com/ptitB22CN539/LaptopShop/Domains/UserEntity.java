@@ -1,7 +1,6 @@
 package com.ptitB22CN539.LaptopShop.Domains;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.ptitB22CN539.LaptopShop.Config.UserStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,12 +13,15 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Cascade;
+import org.hibernate.annotations.CascadeType;
 
 import java.util.List;
 
@@ -37,8 +39,6 @@ public class UserEntity {
     private String id;
     @Column(name = "full_name")
     private String fullName;
-    @Column(name = "address")
-    private String address;
     @Column(name = "email", unique = true)
     private String email;
     @Column(name = "phone")
@@ -52,13 +52,19 @@ public class UserEntity {
 
     @ManyToOne
     @JoinColumn(name = "role_name", referencedColumnName = RoleEntity_.NAME)
-    @JsonManagedReference
     private RoleEntity role;
 
     @ManyToMany
-    @JoinTable(name = "user_permission",
+    @JoinTable(name = "user_permissions",
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "permission_id"))
-    @JsonManagedReference
     private List<PermissionEntity> permissions;
+
+    @OneToMany(mappedBy = "user")
+    private List<ApartmentUserEntity> apartmentUsers;
+
+    @OneToMany(mappedBy = "user", orphanRemoval = true)
+    @Cascade(value = { CascadeType.PERSIST, CascadeType.MERGE, CascadeType.REMOVE })
+    @JsonIgnore
+    private List<JwtEntity> listJwt;
 }

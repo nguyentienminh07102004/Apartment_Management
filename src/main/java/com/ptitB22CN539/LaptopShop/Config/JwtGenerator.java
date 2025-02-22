@@ -9,10 +9,11 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.ptitB22CN539.LaptopShop.Domains.JwtEntity;
 import com.ptitB22CN539.LaptopShop.Domains.UserEntity;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.DataInvalidException;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.ExceptionVariable;
-import com.ptitB22CN539.LaptopShop.Redis.Entity.JwtRedisEntity;
+import com.ptitB22CN539.LaptopShop.Utils.BuildScope;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -28,22 +29,26 @@ public class JwtGenerator {
     private String signingKey;
     @Value(value = "${accessTokenDuration}")
     private Long accessTokenDuration;
+    @Value(value = "${refreshTokenDuration}")
+    private Long refreshTokenDuration;
 
-    public JwtRedisEntity jwtGenerator(UserEntity user) {
+    public JwtEntity jwtGenerator(UserEntity user) {
         JWSHeader header = new JWSHeader(JWSAlgorithm.HS512);
         String jwtId = UUID.randomUUID().toString();
+        String refreshToken = UUID.randomUUID().toString();
         JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
                 .subject(user.getEmail())
                 .expirationTime(Date.from(Instant.now().plus(accessTokenDuration, ChronoUnit.SECONDS)))
                 .jwtID(jwtId)
                 .issueTime(new Date(System.currentTimeMillis()))
                 .issuer(ConstantConfig.NAME)
+                .claim("scope", BuildScope.buildScope(user))
                 .build();
         Payload payload = new Payload(claimsSet.toJSONObject());
         JWSObject jwsObject = new JWSObject(header, payload);
         try {
             jwsObject.sign(new MACSigner(signingKey.getBytes()));
-            return new JwtRedisEntity(jwtId, user.getEmail(), jwsObject.serialize(), accessTokenDuration);
+            return new JwtEntity(jwtId, jwsObject.serialize(), refreshToken, new Date(System.currentTimeMillis() + refreshTokenDuration * 1000), user);
         } catch (JOSEException e) {
             throw new DataInvalidException(ExceptionVariable.SERVER_ERROR);
         }

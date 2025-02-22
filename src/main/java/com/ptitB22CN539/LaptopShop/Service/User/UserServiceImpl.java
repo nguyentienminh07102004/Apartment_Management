@@ -5,26 +5,36 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.ptitB22CN539.LaptopShop.Config.ConstantConfig;
 import com.ptitB22CN539.LaptopShop.Config.JwtGenerator;
 import com.ptitB22CN539.LaptopShop.Config.UserStatus;
+import com.ptitB22CN539.LaptopShop.DTO.User.RefreshTokenRequest;
+import com.ptitB22CN539.LaptopShop.DTO.User.ResidentRequestDTO;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserLogin;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserRegister;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserSocialLogin;
+import com.ptitB22CN539.LaptopShop.Domains.ApartmentEntity_;
+import com.ptitB22CN539.LaptopShop.Domains.ApartmentUserEntity_;
+import com.ptitB22CN539.LaptopShop.Domains.JwtEntity;
 import com.ptitB22CN539.LaptopShop.Domains.PermissionEntity;
 import com.ptitB22CN539.LaptopShop.Domains.RoleEntity;
+import com.ptitB22CN539.LaptopShop.Domains.RoleEntity_;
 import com.ptitB22CN539.LaptopShop.Domains.UserEntity;
+import com.ptitB22CN539.LaptopShop.Domains.UserEntity_;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.DataInvalidException;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.ExceptionVariable;
 import com.ptitB22CN539.LaptopShop.Mapper.User.UserMapper;
-import com.ptitB22CN539.LaptopShop.Redis.Entity.JwtRedisEntity;
-import com.ptitB22CN539.LaptopShop.Redis.Repository.IJwtRedisRepository;
+import com.ptitB22CN539.LaptopShop.Repository.JwtRepository;
 import com.ptitB22CN539.LaptopShop.Repository.PermissionRepository;
 import com.ptitB22CN539.LaptopShop.Repository.RoleRepository;
 import com.ptitB22CN539.LaptopShop.Repository.UserRepository;
+import com.ptitB22CN539.LaptopShop.Utils.PageableUtils;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
@@ -32,6 +42,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -39,6 +50,7 @@ import reactor.core.publisher.Mono;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -52,28 +64,47 @@ public class UserServiceImpl implements IUserService {
     private final JwtGenerator jwtGenerator;
     private final PasswordEncoder passwordEncoder;
     private final UserMapper userMapper;
-    private final IJwtRedisRepository jwtRedisRepository;
-
+    private final JwtRepository jwtRepository;
+    private final PageableUtils pageableUtils;
 
     @Value(value = "${maxLoginDevice}")
     private Integer maxLoginDevice;
+    @Value(value = "${refreshTokenDuration}")
+    private Long refreshTokenDuration;
 
     @Override
     @Transactional
-    public JwtRedisEntity login(UserLogin userLogin) {
-        UserEntity user = userRepository.findByEmail(userLogin.getEmail())
-                .orElseThrow(() -> new DataInvalidException(ExceptionVariable.EMAIL_NOT_FOUND));
-        if ((userLogin.getIsSocial() == null || !userLogin.getIsSocial()) && !passwordEncoder.matches(userLogin.getPassword(), user.getPassword())) {
-            throw new DataInvalidException(ExceptionVariable.EMAIL_PASSWORD_NOT_CORRECT);
+    public JwtEntity login(UserLogin userLogin) {
+        try {
+            UserEntity user = this.getUserByEmail(userLogin.getEmail());
+            if ((userLogin.getIsSocial() == null || !userLogin.getIsSocial())
+                    && !passwordEncoder.matches(userLogin.getPassword(), user.getPassword())) {
+                throw new DataInvalidException(ExceptionVariable.EMAIL_PASSWORD_NOT_CORRECT);
+            }
+            List<JwtEntity> jwtEntities = jwtRepository.findByUser_Email(user.getEmail());
+            if (jwtEntities.size() >= maxLoginDevice) {
+                String jit = null;
+                for (JwtEntity jwtRedisEntity : jwtEntities) {
+                    JWTClaimsSet jwtClaimsSet = jwtGenerator.getSignedJWT(jwtRedisEntity.getToken()).getJWTClaimsSet();
+                    if (jwtClaimsSet.getExpirationTime().before(new Date(System.currentTimeMillis()))) {
+                        jit = jwtClaimsSet.getJWTID();
+                        break;
+                    }
+                }
+                if (jit != null) {
+                    // nếu có 1 token hết hạn
+                    jwtRepository.deleteById(jit);
+                } else {
+                    throw new DataInvalidException(ExceptionVariable.ACCOUNT_LOGIN_MAX_DEVICE);
+                }
+            }
+            JwtEntity jwt = jwtGenerator.jwtGenerator(user);
+            user.getListJwt().add(jwt);
+            userRepository.save(user);
+            return jwt;
+        } catch (ParseException | JOSEException exception) {
+            return null;
         }
-        List<JwtRedisEntity> jwtEntities = jwtRedisRepository.getJwt(user.getEmail());
-        if (jwtEntities.size() >= maxLoginDevice) {
-            throw new DataInvalidException(ExceptionVariable.ACCOUNT_LOGIN_MAX_DEVICE);
-        }
-        JwtRedisEntity jwt = jwtGenerator.jwtGenerator(user);
-        jwtRedisRepository.setJwt(jwt);
-        userRepository.save(user);
-        return jwt;
     }
 
     @Override
@@ -111,11 +142,12 @@ public class UserServiceImpl implements IUserService {
     }
 
     @Override
+    @Transactional
     public void logout(HttpServletRequest request) {
         try {
             String token = request.getHeader(HttpHeaders.AUTHORIZATION);
             JWTClaimsSet jwtClaimsSet = jwtGenerator.getSignedJWT(token.substring(7)).getJWTClaimsSet();
-            jwtRedisRepository.deleteJwt(jwtClaimsSet.getSubject(), jwtClaimsSet.getJWTID());
+            jwtRepository.deleteById(jwtClaimsSet.getJWTID());
         } catch (ParseException | JOSEException exception) {
             System.out.println(exception.getMessage());
         }
@@ -124,7 +156,7 @@ public class UserServiceImpl implements IUserService {
     @Override
     @Transactional
     @SuppressWarnings(value = "rawtypes")
-    public JwtRedisEntity loginSocial(UserSocialLogin userSocialLogin) {
+    public JwtEntity loginSocial(UserSocialLogin userSocialLogin) {
         MultiValueMap<String, String> properties = new LinkedMultiValueMap<>();
         if (!userSocialLogin.getName().equals("discord")) {
             properties.add(OAuth2ParameterNames.CLIENT_ID, userSocialLogin.getClientId());
@@ -133,8 +165,7 @@ public class UserServiceImpl implements IUserService {
         properties.add(OAuth2ParameterNames.GRANT_TYPE, AuthorizationGrantType.AUTHORIZATION_CODE.getValue());
         properties.add(OAuth2ParameterNames.REDIRECT_URI, userSocialLogin.getRedirectUri());
         properties.add(OAuth2ParameterNames.CODE, userSocialLogin.getCode());
-        WebClient webClient;
-        webClient = WebClient.builder()
+        WebClient webClient = WebClient.builder()
                 .baseUrl(userSocialLogin.getAccessTokenUrl())
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE)
                 .build();
@@ -159,22 +190,6 @@ public class UserServiceImpl implements IUserService {
         responseMap = response.block();
         if (responseMap == null) throw new DataInvalidException(ExceptionVariable.SERVER_ERROR);
         String email = responseMap.get("email").toString();
-        // Huỷ access token hiện tại đi
-        if (userSocialLogin.getName().equals("discord")) {
-            webClient = WebClient.builder()
-                    .baseUrl("https://discord.com/api/v10/oauth2/token/revoke")
-                    .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-                    .defaultHeader(HttpHeaders.AUTHORIZATION, "Basic " + Base64.getEncoder().encodeToString(String.join(":", userSocialLogin.getClientId(), userSocialLogin.getClientSecret()).getBytes()))
-                    .build();
-            MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-            parameters.add("token", accessToken);
-            parameters.add("token_type_hint", OAuth2ParameterNames.ACCESS_TOKEN);
-            webClient.method(HttpMethod.POST)
-                    .body(BodyInserters.fromFormData(parameters))
-                    .retrieve()
-                    .bodyToMono(Void.class)
-                    .block();
-        }
         if (userRepository.existsByEmail(email)) {
             return this.login(new UserLogin(email, null, true));
         }
@@ -185,9 +200,77 @@ public class UserServiceImpl implements IUserService {
                 .role(roleRepository.findByName(ConstantConfig.USER_ROLE))
                 .permissions(permissionRepository.findAllByNameIn(ConstantConfig.PERMISSION_DEFAULT_USER))
                 .build();
-        JwtRedisEntity jwt = jwtGenerator.jwtGenerator(user);
-        jwtRedisRepository.setJwt(jwt);
+        JwtEntity jwt = jwtGenerator.jwtGenerator(user);
+        List<JwtEntity> jwtEntities = user.getListJwt();
+        if (jwtEntities == null) {
+            jwtEntities = new ArrayList<>();
+        }
+        jwtEntities.add(jwt);
+        user.setListJwt(jwtEntities);
         userRepository.save(user);
         return jwt;
+    }
+
+    @Override
+    @Transactional
+    public JwtEntity refreshToken(RefreshTokenRequest refreshToken) {
+        try {
+            JwtEntity jwt = jwtRepository.findByRefreshToken(refreshToken.getRefreshToken())
+                    .orElseThrow(() -> new DataInvalidException(ExceptionVariable.UNAUTHORIZED));
+            // check jwt hết hạn
+            UserEntity user = jwt.getUser();
+            JWTClaimsSet jwtClaimsSet = jwtGenerator.getSignedJWT(jwt.getToken()).getJWTClaimsSet();
+            if (new Date(jwtClaimsSet.getIssueTime().getTime() + refreshTokenDuration * 1000).before(new Date(System.currentTimeMillis()))) {
+                throw new DataInvalidException(ExceptionVariable.UNAUTHORIZED);
+            }
+            jwtRepository.deleteById(jwtClaimsSet.getJWTID());
+            return jwtRepository.save(jwtGenerator.jwtGenerator(user));
+        } catch (ParseException | JOSEException exception) {
+            throw new DataInvalidException(ExceptionVariable.UNAUTHORIZED);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserEntity getUserByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new DataInvalidException(ExceptionVariable.EMAIL_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserEntity getUserById(String id) {
+        return userRepository.findById(id)
+                .orElseThrow(() -> new DataInvalidException(ExceptionVariable.USER_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedModel<UserEntity> getAllResident(ResidentRequestDTO residentRequestDTO) {
+        Specification<UserEntity> specification = (root, query, builder) -> {
+            Predicate predicate = builder.equal(root.get(UserEntity_.ROLE).get(RoleEntity_.NAME), ConstantConfig.USER_ROLE);
+            if (StringUtils.hasText(residentRequestDTO.getName())) {
+                predicate = builder.and(builder.like(root.get(UserEntity_.FULL_NAME),
+                        String.join("", "%", residentRequestDTO.getName(), "%")));
+            }
+            if (StringUtils.hasText(residentRequestDTO.getId())) {
+                predicate = builder.and(builder.like(root.get(UserEntity_.ID),
+                        String.join("", "%", residentRequestDTO.getId(), "%")));
+            }
+            if (StringUtils.hasText(residentRequestDTO.getApartmentId())) {
+                predicate = builder.and(builder.like(root.get(UserEntity_.APARTMENT_USERS).get(ApartmentUserEntity_.APARTMENT).get(ApartmentEntity_.ID),
+                        String.join("", "%", residentRequestDTO.getApartmentId(), "%")));
+            }
+            return predicate;
+        };
+        return new PagedModel<>(userRepository.findAll(specification,
+                pageableUtils.getPageable(residentRequestDTO.getPage(), residentRequestDTO.getLimit())));
+
+    }
+
+    @Scheduled(cron = "@daily")
+    @Transactional
+    protected void deleteAllRefreshTokenExpired() {
+        jwtRepository.deleteAllByRefreshTokenExpiatedDateBefore(new Date(System.currentTimeMillis()));
     }
 }

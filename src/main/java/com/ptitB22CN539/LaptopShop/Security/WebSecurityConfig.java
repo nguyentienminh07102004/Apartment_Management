@@ -4,10 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.ptitB22CN539.LaptopShop.Config.ConstantConfig;
 import com.ptitB22CN539.LaptopShop.Config.JwtGenerator;
+import com.ptitB22CN539.LaptopShop.Config.UserStatus;
 import com.ptitB22CN539.LaptopShop.DTO.APIResponse;
+import com.ptitB22CN539.LaptopShop.Domains.JwtEntity;
+import com.ptitB22CN539.LaptopShop.Domains.UserEntity;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.DataInvalidException;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.ExceptionVariable;
-import com.ptitB22CN539.LaptopShop.Redis.Repository.JwtRedisRepository;
+import com.ptitB22CN539.LaptopShop.Repository.JwtRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -31,6 +34,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 import javax.crypto.spec.SecretKeySpec;
+import java.util.List;
 
 @EnableWebSecurity
 @EnableMethodSecurity(jsr250Enabled = true)
@@ -39,7 +43,7 @@ import javax.crypto.spec.SecretKeySpec;
 public class WebSecurityConfig {
     @Value(value = "${signerKey}")
     private String signingKey;
-    private final JwtRedisRepository jwtRedisRepository;
+    private final JwtRepository jwtRepository;
     private final JwtGenerator jwtGenerator;
     @Value(value = "${api.prefix}")
     private String apiPrefix;
@@ -50,9 +54,24 @@ public class WebSecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable);
         http.authorizeHttpRequests(request -> request
                 .requestMatchers(HttpMethod.POST, "/%s/users/login/{social}".formatted(apiPrefix)).permitAll()
-                .requestMatchers(RegexRequestMatcher.regexMatcher(HttpMethod.POST, "/%s/users/(register|login)".formatted(apiPrefix))).permitAll()
+                .requestMatchers(RegexRequestMatcher.regexMatcher(HttpMethod.POST, "/%s/users/(register|login|refresh-token)".formatted(apiPrefix))).permitAll()
                 .requestMatchers(HttpMethod.POST, "/%s/users/logout".formatted(apiPrefix))
                 .access(new WebExpressionAuthorizationManager("not isAnonymous()"))
+
+                .requestMatchers(HttpMethod.POST, "/%s/apartments/".formatted(apiPrefix)).hasRole(ConstantConfig.ADMIN_ROLE)
+                .requestMatchers(HttpMethod.POST, "/%s/apartments/rental/apartment/{apartmentId}/user/{userId}".formatted(apiPrefix))
+                .access(new WebExpressionAuthorizationManager("not isAnonymous()"))
+                .requestMatchers(HttpMethod.GET, "/%s/apartments/".formatted(apiPrefix)).permitAll()
+                .requestMatchers(HttpMethod.GET, "/%s/users/resident".formatted(apiPrefix)).hasAuthority(ConstantConfig.PERMISSION_READ)
+
+                .requestMatchers("/%s/waters/{id}".formatted(apiPrefix)).permitAll()
+                .requestMatchers("/%s/waters/**".formatted(apiPrefix)).hasRole(ConstantConfig.ADMIN_ROLE)
+
+                .requestMatchers("/ws**").permitAll()
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
+
+                .requestMatchers("/faker/**").permitAll()
+
                 .anyRequest().authenticated());
         http.cors(cors -> corsFilter());
         http.oauth2ResourceServer(oauth2 ->
@@ -79,8 +98,11 @@ public class WebSecurityConfig {
                     throw new DataInvalidException(ExceptionVariable.TOKEN_INVALID);
                 }
                 JWTClaimsSet jwtClaimsSet = jwtGenerator.getSignedJWT(token).getJWTClaimsSet();
-                if (!jwtRedisRepository.hasExists(jwtClaimsSet.getSubject(), jwtClaimsSet.getJWTID())) {
-                    throw new DataInvalidException(ExceptionVariable.TOKEN_INVALID);
+                JwtEntity jwt = jwtRepository.findById(jwtClaimsSet.getJWTID())
+                        .orElseThrow(() -> new DataInvalidException(ExceptionVariable.TOKEN_INVALID));
+                UserEntity user = jwt.getUser();
+                if (user.getStatus().equals(UserStatus.INACTIVE)) {
+                    throw new DataInvalidException(ExceptionVariable.USER_LOCKED);
                 }
                 SecretKeySpec spec = new SecretKeySpec(signingKey.getBytes(), MacAlgorithm.HS512.getName());
                 return NimbusJwtDecoder.withSecretKey(spec)
@@ -88,7 +110,6 @@ public class WebSecurityConfig {
                         .build()
                         .decode(token);
             } catch (Exception e) {
-                System.out.println(e.getMessage());
                 throw new DataInvalidException(ExceptionVariable.TOKEN_INVALID);
             }
         };
@@ -98,7 +119,7 @@ public class WebSecurityConfig {
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         JwtGrantedAuthoritiesConverter jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        jwtGrantedAuthoritiesConverter.setAuthorityPrefix(ConstantConfig.ROLE_PREFIX);
+        jwtGrantedAuthoritiesConverter.setAuthorityPrefix("");
         converter.setJwtGrantedAuthoritiesConverter(jwtGrantedAuthoritiesConverter);
         return converter;
     }
@@ -107,7 +128,7 @@ public class WebSecurityConfig {
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.addAllowedOrigin("http://localhost:3000/");
+        config.setAllowedOrigins(List.of("http://localhost:3002", "http://localhost:3000"));
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

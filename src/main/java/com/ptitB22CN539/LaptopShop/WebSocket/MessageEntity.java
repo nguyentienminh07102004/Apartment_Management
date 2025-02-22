@@ -1,6 +1,5 @@
-package com.ptitB22CN539.LaptopShop.DTO;
+package com.ptitB22CN539.LaptopShop.WebSocket;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -12,9 +11,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@JsonInclude(value = JsonInclude.Include.NON_NULL)
-public class APIResponse {
-    private Integer code;
+public class MessageEntity {
     private String message;
-    private Object data;
+    private String sender;
 }

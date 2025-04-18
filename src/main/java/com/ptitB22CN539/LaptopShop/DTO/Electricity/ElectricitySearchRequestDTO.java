@@ -1,4 +1,4 @@
-package com.ptitB22CN539.LaptopShop.DTO.Water;
+package com.ptitB22CN539.LaptopShop.DTO.Electricity;
 
 import com.ptitB22CN539.LaptopShop.Config.ServiceFeeStatus;
 import lombok.AllArgsConstructor;
@@ -12,7 +12,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class WaterSearchRequestDTO {
+public class ElectricitySearchRequestDTO {
     private String id;
     private String apartmentId;
     private String paymentPeriod;

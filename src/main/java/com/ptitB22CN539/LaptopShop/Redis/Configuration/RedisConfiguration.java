@@ -1,4 +1,4 @@
-package com.ptitB22CN539.LaptopShop.Redis;
+package com.ptitB22CN539.LaptopShop.Redis.Configuration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;

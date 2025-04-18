@@ -15,8 +15,7 @@ import java.util.Date;
 @AllArgsConstructor
 @Builder
 public class WaterFeeRequestDTO {
-    private Date fromDate;
-    private Date toDate;
+    private String paymentPeriod;
     private Integer waterIndexStart;
     private Integer waterIndexEnd;
     private Date dueDate;

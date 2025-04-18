@@ -7,7 +7,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface WaterFeeRepository extends JpaRepository<WaterFeeEntity, String>, JpaSpecificationExecutor<WaterFeeEntity> {
     Page<WaterFeeEntity> findByApartment_Id(String apartmentId, Pageable pageable);
+    List<WaterFeeEntity> findByPaymentPeriod(String paymentPeriod);
+    Long countByPaymentPeriod(String paymentPeriod);
 }

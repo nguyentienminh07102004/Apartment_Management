@@ -49,6 +49,8 @@ public class UserEntity {
     @Column(name = "status")
     @Enumerated(value = EnumType.STRING)
     private UserStatus status;
+    @Column(name = "avatar")
+    private String avatar;
 
     @ManyToOne
     @JoinColumn(name = "role_name", referencedColumnName = RoleEntity_.NAME)

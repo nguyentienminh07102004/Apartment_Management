@@ -1,4 +1,4 @@
-package com.ptitB22CN539.LaptopShop.Security;
+package com.apartmentbuilding.PTIT.Security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -54,8 +54,11 @@ public class WebSecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable);
         http.authorizeHttpRequests(request -> request
                 .requestMatchers(HttpMethod.POST, "/%s/users/login/{social}".formatted(apiPrefix)).permitAll()
-                .requestMatchers(RegexRequestMatcher.regexMatcher(HttpMethod.POST, "/%s/users/(register|login|refresh-token)".formatted(apiPrefix))).permitAll()
+                .requestMatchers(RegexRequestMatcher.regexMatcher(HttpMethod.POST, "/%s/users/(register|login)".formatted(apiPrefix))).permitAll()
+                .requestMatchers(HttpMethod.POST, "/%s/users/refresh-token".formatted(apiPrefix)).permitAll()
                 .requestMatchers(HttpMethod.POST, "/%s/users/logout".formatted(apiPrefix))
+                .access(new WebExpressionAuthorizationManager("not isAnonymous()"))
+                .requestMatchers(HttpMethod.PUT, "/%s/users/avatar".formatted(apiPrefix))
                 .access(new WebExpressionAuthorizationManager("not isAnonymous()"))
 
                 .requestMatchers(HttpMethod.POST, "/%s/apartments/".formatted(apiPrefix)).hasRole(ConstantConfig.ADMIN_ROLE)
@@ -66,6 +69,8 @@ public class WebSecurityConfig {
 
                 .requestMatchers("/%s/waters/{id}".formatted(apiPrefix)).permitAll()
                 .requestMatchers("/%s/waters/**".formatted(apiPrefix)).hasRole(ConstantConfig.ADMIN_ROLE)
+
+                .requestMatchers("/%s/electrics/**".formatted(apiPrefix)).permitAll()
 
                 .requestMatchers("/ws**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
@@ -128,7 +133,7 @@ public class WebSecurityConfig {
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of("http://localhost:3002", "http://localhost:3000"));
+        config.setAllowedOrigins(List.of("http://localhost:3002", "http://localhost:3000", "http://127.0.0.1:5500", "http://localhost:5500"));
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

@@ -11,6 +11,6 @@ public class WebSocketController {
     @MessageMapping(value = "/send")
     @SendTo(value = "/topic/messages")
     public MessageEntity sendMessage(@Payload MessageEntity message) {
-        return new MessageEntity(message.getMessage(), message.getSender());
+        return message;
     }
 }

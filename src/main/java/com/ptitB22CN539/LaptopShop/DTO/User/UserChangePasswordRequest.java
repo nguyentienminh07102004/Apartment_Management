@@ -1,6 +1,5 @@
 package com.ptitB22CN539.LaptopShop.DTO.User;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,10 +12,11 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class UserLogin {
-    @Email(regexp = "^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$", message = "EMAIL_INVALID")
-    private String email;
+public class UserChangePasswordRequest {
     @Size(min = 8, message = "PASSWORD_LENGTH_NOT_CORRECT")
-    private String password;
-    private Boolean isSocial;
+    private String oldPassword;
+    @Size(min = 8, message = "PASSWORD_LENGTH_NOT_CORRECT")
+    private String newPassword;
+    @Size(min = 8, message = "PASSWORD_LENGTH_NOT_CORRECT")
+    private String confirmPassword;
 }

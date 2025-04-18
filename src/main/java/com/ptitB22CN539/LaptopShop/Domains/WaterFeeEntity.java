@@ -25,10 +25,8 @@ public class WaterFeeEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id")
     private String id;
-    @Column(name = "from_date")
-    private Date fromDate;
-    @Column(name = "to_date")
-    private Date toDate;
+    @Column(name = "payment_period")
+    private String paymentPeriod;
     @Column(name = "water_index_start")
     private Integer waterIndexStart;
     @Column(name = "water_index_end")

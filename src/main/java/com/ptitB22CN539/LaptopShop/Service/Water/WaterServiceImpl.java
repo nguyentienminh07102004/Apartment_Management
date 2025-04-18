@@ -12,6 +12,7 @@ import com.ptitB22CN539.LaptopShop.Mapper.WaterMapper;
 import com.ptitB22CN539.LaptopShop.Repository.WaterFeeRepository;
 import com.ptitB22CN539.LaptopShop.Service.Apartment.IApartmentService;
 import com.ptitB22CN539.LaptopShop.Utils.PageableUtils;
+import com.ptitB22CN539.LaptopShop.Utils.ReadExcel;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
@@ -19,7 +20,9 @@ import org.springframework.data.web.PagedModel;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,11 +77,8 @@ public class WaterServiceImpl implements IWaterService {
                 predicate = builder.and(builder.like(root.get(WaterFeeEntity_.ID),
                         String.join("%", waterSearchRequestDTO.getId(), "%")));
             }
-            if (waterSearchRequestDTO.getFromDate() != null) {
-                predicate = builder.and(builder.greaterThanOrEqualTo(root.get(WaterFeeEntity_.FROM_DATE), waterSearchRequestDTO.getFromDate()));
-            }
-            if (waterSearchRequestDTO.getToDate() != null) {
-                predicate = builder.and(builder.lessThanOrEqualTo(root.get(WaterFeeEntity_.TO_DATE), waterSearchRequestDTO.getToDate()));
+            if (StringUtils.hasText(waterSearchRequestDTO.getPaymentPeriod())) {
+                predicate = builder.and(builder.equal(root.get(WaterFeeEntity_.PAYMENT_PERIOD), waterSearchRequestDTO.getPaymentPeriod()));
             }
             if (waterSearchRequestDTO.getStatus() != null) {
                 predicate = builder.and(builder.equal(root.get(WaterFeeEntity_.STATUS), waterSearchRequestDTO.getStatus()));
@@ -91,12 +91,30 @@ public class WaterServiceImpl implements IWaterService {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<String, Double> getWaterFeeChartByApartmentId() {
-        List<WaterFeeEntity> waterFeeEntities = waterFeeRepository.findAll();
+    public Map<String, Double> getWaterFeeChartByApartmentId(String paymentPeriod) {
+        List<WaterFeeEntity> waterFeeEntities = waterFeeRepository.findByPaymentPeriod(paymentPeriod);
         Map<String, Double> res = new HashMap<>();
         for (WaterFeeEntity waterFeeEntity : waterFeeEntities) {
             res.put(waterFeeEntity.getApartment().getName(), waterFeeEntity.getPriceUnit() * (waterFeeEntity.getWaterIndexEnd() - waterFeeEntity.getWaterIndexStart()));
         }
         return res;
+    }
+
+    @Override
+    @Transactional
+    public List<WaterFeeEntity> saveFromExcel(MultipartFile file) {
+        ReadExcel<WaterFeeRequestDTO> readExcel = new ReadExcel<>();
+        List<WaterFeeRequestDTO> list = readExcel.readExcel(file, 0, WaterFeeRequestDTO.class);
+        List<WaterFeeEntity> res = new ArrayList<>();
+        for (WaterFeeRequestDTO waterFeeRequestDTO : list) {
+            res.add(this.save(waterFeeRequestDTO));
+        }
+        return res;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Long countByPaymentPeriod(String paymentPeriod) {
+        return waterFeeRepository.countByPaymentPeriod(paymentPeriod);
     }
 }

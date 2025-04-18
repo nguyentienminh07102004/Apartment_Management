@@ -25,10 +25,8 @@ public class ElectricityFeeEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id")
     private String id;
-    @Column(name = "from_date")
-    private Date fromDate;
-    @Column(name = "to_date")
-    private Date toDate;
+    @Column(name = "payment_period")
+    private String paymentPeriod;
     @Column(name = "electricity_index_start")
     private Integer electricityIndexStart;
     @Column(name = "electricity_index_end")

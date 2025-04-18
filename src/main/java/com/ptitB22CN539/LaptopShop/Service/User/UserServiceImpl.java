@@ -5,10 +5,13 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.ptitB22CN539.LaptopShop.Config.ConstantConfig;
 import com.ptitB22CN539.LaptopShop.Config.JwtGenerator;
 import com.ptitB22CN539.LaptopShop.Config.UserStatus;
+import com.ptitB22CN539.LaptopShop.DTO.CodeVerify.CodeVerifyForgotPasswordRequest;
 import com.ptitB22CN539.LaptopShop.DTO.User.RefreshTokenRequest;
 import com.ptitB22CN539.LaptopShop.DTO.User.ResidentRequestDTO;
+import com.ptitB22CN539.LaptopShop.DTO.User.UserChangePasswordRequest;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserLogin;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserRegister;
+import com.ptitB22CN539.LaptopShop.DTO.User.UserSendEmailForgotPasswordRequest;
 import com.ptitB22CN539.LaptopShop.DTO.User.UserSocialLogin;
 import com.ptitB22CN539.LaptopShop.Domains.ApartmentEntity_;
 import com.ptitB22CN539.LaptopShop.Domains.ApartmentUserEntity_;
@@ -21,10 +24,15 @@ import com.ptitB22CN539.LaptopShop.Domains.UserEntity_;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.DataInvalidException;
 import com.ptitB22CN539.LaptopShop.ExceptionAdvice.ExceptionVariable;
 import com.ptitB22CN539.LaptopShop.Mapper.User.UserMapper;
+import com.ptitB22CN539.LaptopShop.Redis.Entity.CodeVerifyChangePassword;
+import com.ptitB22CN539.LaptopShop.Redis.Repository.ICodeVerifyRepository;
 import com.ptitB22CN539.LaptopShop.Repository.JwtRepository;
 import com.ptitB22CN539.LaptopShop.Repository.PermissionRepository;
 import com.ptitB22CN539.LaptopShop.Repository.RoleRepository;
 import com.ptitB22CN539.LaptopShop.Repository.UserRepository;
+import com.ptitB22CN539.LaptopShop.Service.SendEmail.IEmailService;
+import com.ptitB22CN539.LaptopShop.Service.Upload.IUploadService;
+import com.ptitB22CN539.LaptopShop.Utils.GeneratedRandomCode;
 import com.ptitB22CN539.LaptopShop.Utils.PageableUtils;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,6 +43,7 @@ import org.springframework.data.web.PagedModel;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
@@ -43,10 +52,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.io.File;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -66,6 +77,9 @@ public class UserServiceImpl implements IUserService {
     private final UserMapper userMapper;
     private final JwtRepository jwtRepository;
     private final PageableUtils pageableUtils;
+    private final IUploadService uploadService;
+    private final ICodeVerifyRepository codeVerifyRepository;
+    private final IEmailService emailService;
 
     @Value(value = "${maxLoginDevice}")
     private Integer maxLoginDevice;
@@ -266,6 +280,82 @@ public class UserServiceImpl implements IUserService {
         return new PagedModel<>(userRepository.findAll(specification,
                 pageableUtils.getPageable(residentRequestDTO.getPage(), residentRequestDTO.getLimit())));
 
+    }
+
+    @Override
+    @Transactional
+    public UserEntity uploadAvatar(MultipartFile avatar, String userid) {
+        try {
+            if (avatar == null || avatar.isEmpty()) {
+                throw new DataInvalidException(ExceptionVariable.FILE_EMPTY);
+            }
+            File file = File.createTempFile("PTITB22CN539-", null);
+            avatar.transferTo(file);
+            String url = uploadService.upload(file);
+            UserEntity user = this.getUserById(userid);
+            if (StringUtils.hasText(user.getAvatar())) {
+                uploadService.delete(user.getAvatar());
+            }
+            user.setAvatar(url);
+            return userRepository.save(user);
+        } catch (Exception exception) {
+            throw new DataInvalidException(ExceptionVariable.SERVER_ERROR);
+        }
+    }
+
+    @Override
+    @Transactional
+    public UserEntity getMyInfo() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return this.getUserByEmail(email);
+    }
+
+    @Override
+    @Transactional
+    public void sendEmailForgotPassword(UserSendEmailForgotPasswordRequest userSendEmailForgotPasswordRequest) {
+        this.getUserByEmail(userSendEmailForgotPasswordRequest.getEmail());
+        String code = GeneratedRandomCode.generateRandomCode(6);
+        CodeVerifyChangePassword codeVerifyChangePassword = CodeVerifyChangePassword.builder()
+                .code(code)
+                .email(userSendEmailForgotPasswordRequest.getEmail())
+                .build();
+        codeVerifyRepository.setCodeVerify(codeVerifyChangePassword);
+        this.emailService.sendEmail(userSendEmailForgotPasswordRequest.getRevisedEmail(), "Forgot Password", "ForgotPassword", Map.of("code", GeneratedRandomCode.generateRandomCode(6)));
+    }
+
+    @Override
+    @Transactional
+    public void verifyCodeForgotPassword(CodeVerifyForgotPasswordRequest codeVerifyForgotPasswordRequest) {
+        String code = codeVerifyForgotPasswordRequest.getCode();
+        CodeVerifyChangePassword codeVerifyChangePassword = this.codeVerifyRepository.getCodeVerify(code);
+        if (codeVerifyChangePassword == null) {
+            throw new DataInvalidException(ExceptionVariable.TOKEN_INVALID);
+        }
+        String email = codeVerifyChangePassword.getEmail();
+        UserEntity user = this.getUserByEmail(email);
+        if (!codeVerifyForgotPasswordRequest.getPassword().equals(codeVerifyForgotPasswordRequest.getConfirmPassword())) {
+            throw new DataInvalidException(ExceptionVariable.PASSWORD_CONFIRM_PASSWORD_NOT_MATCH);
+        }
+        if (passwordEncoder.matches(codeVerifyForgotPasswordRequest.getPassword(), user.getPassword())) {
+            throw new DataInvalidException(ExceptionVariable.OLD_PASSWORD_NEW_PASSWORD_MATCH);
+        }
+        user.setPassword(passwordEncoder.encode(codeVerifyForgotPasswordRequest.getPassword()));
+        userRepository.save(user);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UserChangePasswordRequest userChangePasswordRequest) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        UserEntity user = this.getUserByEmail(email);
+        if (passwordEncoder.matches(userChangePasswordRequest.getOldPassword(), user.getPassword())) {
+            throw new DataInvalidException(ExceptionVariable.OLD_PASSWORD_NEW_PASSWORD_MATCH);
+        }
+        if (!userChangePasswordRequest.getConfirmPassword().equals(userChangePasswordRequest.getNewPassword())) {
+            throw new DataInvalidException(ExceptionVariable.PASSWORD_CONFIRM_PASSWORD_NOT_MATCH);
+        }
+        user.setPassword(passwordEncoder.encode(userChangePasswordRequest.getNewPassword()));
+        userRepository.save(user);
     }
 
     @Scheduled(cron = "@daily")

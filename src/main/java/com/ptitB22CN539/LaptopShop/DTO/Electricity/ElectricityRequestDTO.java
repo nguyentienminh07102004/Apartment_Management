@@ -16,10 +16,10 @@ import java.util.Date;
 @Builder
 public class ElectricityRequestDTO {
     private String id;
-    private Date fromDate;
-    private Date toDate;
+    private String paymentPeriod;
     private Integer electricityIndexStart;
     private Integer electricityIndexEnd;
+    private Double priceUnit;
     private Date dueDate;
     private String apartmentId;
     private ServiceFeeStatus status;
